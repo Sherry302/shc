@@ -18,12 +18,23 @@
 package org.apache.spark.sql
 
 import org.apache.hadoop.hbase.util.Bytes
+import org.apache.phoenix.schema.types.PInteger
 import org.apache.spark.sql.execution.datasources.hbase.HBaseTableCatalog
 import org.apache.spark.sql.types.BinaryType
 
 object Test {
   def main(args: Array[String]) {
-   val a: Array[Byte] = Array.fill(10)(Byte.MinValue)
+    /*println(Bytes.toBytes(100000L).length)
+    println(Bytes.toBytes(124447).length)
+    println(Bytes.toBytes("111").length)
+    println(Bytes.toBytes("2224444").length)*/
+
+    val ret1 = Bytes.toBytes(100000L)
+    val len0 = ret1.length.toShort
+    val ret2 = Bytes.toBytes(len0)
+    val ret3 = ret2 ++ ret1
+
+    val a: Array[Byte] = Array.fill(10)(Byte.MinValue)
     val b = Bytes.toBytes ("row003")
     System.arraycopy(b, 0, a, 0, b.length)
     val c = Bytes.toBytes(Int.MinValue)
@@ -31,8 +42,6 @@ object Test {
     val len = a.indexOf(HBaseTableCatalog.delimiter, 0)
     val s1 = Bytes.toString(a, 0, 6)
     val s2 = Bytes.toString(a, 0, len)
-
-
 
     /*val l = Bytes.toBytes(Float.MinValue)
     val m = Bytes.toBytes(-20.0.asInstanceOf[Double])
@@ -67,8 +76,6 @@ object Test {
 
     val p4 = Bytes.compareTo(p1, p3)
     val p5 = Bytes.compareTo(p2, p3)
-
-
 
     val z = Array.fill(4)(Byte.MinValue)
     Bytes.putInt(z, 0, -1)
