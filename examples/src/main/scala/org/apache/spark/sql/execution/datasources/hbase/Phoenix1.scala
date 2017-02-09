@@ -53,7 +53,7 @@ object PRecord1 {
 
 object Phoenix1 {
   def cat = s"""{
-                |"table":{"namespace":"default", "name":"SHC1", "tableCoder":"Phoenix"},
+                |"table":{"namespace":"default", "name":"SHCTABLE", "tableCoder":"Phoenix"},
                 |"rowkey":"key1:key2",
                 |"columns":{
                 |"col00":{"cf":"rowkey", "col":"key1", "type":"string"},
@@ -85,7 +85,7 @@ object Phoenix1 {
     }
 
     //populate table with composite key
-    val data = (30 to 31).map { i =>
+    val data = (30 to 33).map { i =>
       PRecord1(i)
     }
     sc.parallelize(data).toDF.write.options(

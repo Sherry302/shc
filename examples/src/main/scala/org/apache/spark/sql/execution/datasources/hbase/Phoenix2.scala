@@ -17,24 +17,24 @@
 
 package org.apache.spark.sql.execution.datasources.hbase.examples
 
-import org.apache.spark.sql.execution.datasources.hbase._
+import org.apache.spark.sql.execution.datasources.hbase.HBaseTableCatalog
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.{SQLContext, DataFrame}
 
-case class PRecord(col00: String,
-                   col01: Int,
-                   col1: Boolean,
-                   col2: Double,
-                   col3: Float,
-                   col4: Int,
-                   col5: Long,
-                   col6: Short,
-                   col7: String,
-                   col8: Byte)
+case class PRecord2(col00: String,
+                    col01: Int,
+                    col1: Boolean,
+                    col2: Double,
+                    col3: Float,
+                    col4: Int,
+                    col5: Long,
+                    col6: Short,
+                    col7: String,
+                    col8: Byte)
 
-object PRecord {
-  def apply(i: Int): PRecord = {
-    PRecord(s"row${"%03d".format(i)}",
+object PRecord2 {
+  def apply(i: Int): PRecord2 = {
+    PRecord2(s"row${"%03d".format(i)}",
       if (i % 2 == 0) {
         i
       } else {
@@ -51,9 +51,9 @@ object PRecord {
   }
 }
 
-object Phoenix {
+object Phoenix2 {
   def cat = s"""{
-                |"table":{"namespace":"default", "name":"PHOENIXTABLE", "tableCoder":"Phoenix"},
+                |"table":{"namespace":"default", "name":"SHCTABLE", "tableCoder":"Phoenix"},
                 |"rowkey":"key1:key2",
                 |"columns":{
                 |"col00":{"cf":"rowkey", "col":"key1", "type":"string"},
@@ -70,7 +70,7 @@ object Phoenix {
                 |}""".stripMargin
 
   def main(args: Array[String]){
-    val sparkConf = new SparkConf().setAppName("CompositeKeyTest")
+    val sparkConf = new SparkConf().setAppName("CompositeKeyTest1")
     val sc = new SparkContext(sparkConf)
     val sqlContext = new SQLContext(sc)
 
@@ -85,8 +85,8 @@ object Phoenix {
     }
 
     //populate table with composite key
-    val data = (20 to 23).map { i =>
-      PRecord(i)
+    val data = (40 to 43).map { i =>
+      PRecord2(i)
     }
     sc.parallelize(data).toDF.write.options(
       Map(HBaseTableCatalog.tableCatalog -> cat, HBaseTableCatalog.newTable -> "5"))
