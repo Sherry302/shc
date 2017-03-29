@@ -23,7 +23,7 @@ import scala.collection.mutable
 import scala.language.existentials
 import scala.util.control.NonFatal
 
-import org.apache.hadoop.hbase.HBaseConfiguration
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.security.token.TokenUtil
 import org.apache.hadoop.security.Credentials
 import org.apache.hadoop.security.token.{Token, TokenIdentifier}
@@ -33,7 +33,7 @@ import org.apache.spark.util.{ThreadUtils, Utils}
 final class HBaseCredentialsManager private() extends Logging {
   private case class TokenInfo(
       expireTime: Long,
-      conf: HBaseConfiguration,
+      conf: Configuration,
       token: Token[_ <: TokenIdentifier])
   private val tokensMap = new mutable.HashMap[String, TokenInfo]
 
@@ -56,7 +56,7 @@ final class HBaseCredentialsManager private() extends Logging {
    */
   def getCredentialsForCluster(
       hbaseCluster: String,
-      hbaseConf: HBaseConfiguration): Credentials = synchronized {
+      hbaseConf: Configuration): Credentials = synchronized {
     val credentials = new Credentials()
 
     val tokenOpt = tokensMap.get(hbaseCluster)
@@ -115,7 +115,7 @@ final class HBaseCredentialsManager private() extends Logging {
     }
   }
 
-  private def getNewToken(hbaseConf: HBaseConfiguration): TokenInfo = {
+  private def getNewToken(hbaseConf: Configuration): TokenInfo = {
     val token = TokenUtil.obtainToken(hbaseConf)
     val tokenIdentifier = token.decodeIdentifier()
     val expireTime =
@@ -143,5 +143,3 @@ object HBaseCredentialsManager {
     _hbaseCredentialManager
   }
 }
-
-
