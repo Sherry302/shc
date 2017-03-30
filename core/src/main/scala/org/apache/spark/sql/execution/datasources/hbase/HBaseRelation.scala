@@ -117,11 +117,14 @@ case class HBaseRelation(
 
   def hbaseConf = wrappedConf.value
 
-  val serializedCredentials = {
-    val credentials = HBaseCredentialsManager.get().getCredentialsForCluster(hbaseConf)
-    UserGroupInformation.getCurrentUser.addCredentials(credentials)
-    serialize(credentials)
-  }
+  val serializedCredentials =
+    if (HBaseCredentialsManager.manager.isCredentialsRequired(hbaseConf)){
+      val credentials = HBaseCredentialsManager.manager.getCredentialsForCluster(hbaseConf)
+      UserGroupInformation.getCurrentUser.addCredentials(credentials)
+      serialize(credentials)
+    } else {
+      null
+    }
 
   def createTable() {
     if (catalog.numReg > 3) {
@@ -231,7 +234,9 @@ case class HBaseRelation(
     }
 
     rdd.mapPartitions(iter => {
-      UserGroupInformation.getCurrentUser.addCredentials(deserialize(serializedCredentials))
+      if (HBaseCredentialsManager.manager.isCredentialsRequired(hbaseConf)) {
+        UserGroupInformation.getCurrentUser.addCredentials(deserialize(serializedCredentials))
+      }
       iter.map(convertToPut)
     }).saveAsNewAPIHadoopDataset(job.getConfiguration)
   }
