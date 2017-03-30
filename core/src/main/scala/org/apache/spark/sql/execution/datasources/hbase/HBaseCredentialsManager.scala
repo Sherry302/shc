@@ -32,9 +32,9 @@ import org.apache.spark.util.{ThreadUtils, Utils}
 
 final class HBaseCredentialsManager private() extends Logging {
   private class TokenInfo(
-      val expireTime: Long,
-      val conf: Configuration,
-      val token: Token[_ <: TokenIdentifier])
+                           val expireTime: Long,
+                           val conf: Configuration,
+                           val token: Token[_ <: TokenIdentifier])
   private val tokensMap = new mutable.HashMap[String, TokenInfo]
 
   // We assume token expiration time should be no less than 10 minutes.
@@ -52,8 +52,8 @@ final class HBaseCredentialsManager private() extends Logging {
     tokenUpdateRunnable, nextRefresh, nextRefresh, TimeUnit.MILLISECONDS)
 
   /**
-   * Get HBase credential from specified cluster name.
-   */
+    * Get HBase credential from specified cluster name.
+    */
   def getCredentialsForCluster(conf: Configuration): Credentials = {
     val credentials = new Credentials()
     val identifier = clusterIdentifier(conf)
@@ -140,8 +140,8 @@ final class HBaseCredentialsManager private() extends Logging {
       conf.get("hbase.zookeeper.property.clientPort") != null)
 
     conf.get("zookeeper.znode.parent") + "-"
-      conf.get("hbase.zookeeper.quorum") + "-"
-      conf.get("hbase.zookeeper.property.clientPort")
+    conf.get("hbase.zookeeper.quorum") + "-"
+    conf.get("hbase.zookeeper.property.clientPort")
   }
 }
 
