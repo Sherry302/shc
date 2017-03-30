@@ -117,17 +117,11 @@ case class HBaseRelation(
 
   def hbaseConf = wrappedConf.value
 
-  val credentials = {
-    val clusterIdentifier = hbaseConf.get("zookeeper.znode.parent", "") +
-      hbaseConf.get("hbase.zookeeper.quorum", "") +
-      hbaseConf.get("hbase.zookeeper.property.clientPort", "")
-
-    HBaseCredentialsManager.get()
-      .getCredentialsForCluster(clusterIdentifier, hbaseConf)
+  val serializedCredentials = {
+    val credentials = HBaseCredentialsManager.get().getCredentialsForCluster(hbaseConf)
+    UserGroupInformation.getCurrentUser.addCredentials(credentials)
+    serialize(credentials)
   }
-  // backup
-  UserGroupInformation.getCurrentUser.addCredentials(credentials)
-  val serializedCredentials = serialize(credentials)
 
   def createTable() {
     if (catalog.numReg > 3) {

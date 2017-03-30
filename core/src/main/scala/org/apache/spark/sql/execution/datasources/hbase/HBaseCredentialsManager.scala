@@ -32,9 +32,9 @@ import org.apache.spark.util.{ThreadUtils, Utils}
 
 final class HBaseCredentialsManager private() extends Logging {
   private case class TokenInfo(
-      expireTime: Long,
-      conf: Configuration,
-      token: Token[_ <: TokenIdentifier])
+      val expireTime: Long,
+      val conf: Configuration,
+      val token: Token[_ <: TokenIdentifier])
   private val tokensMap = new mutable.HashMap[String, TokenInfo]
 
   // We assume token expiration time should be no less than 10 minutes.
@@ -54,20 +54,22 @@ final class HBaseCredentialsManager private() extends Logging {
   /**
    * Get HBase credential from specified cluster name.
    */
-  def getCredentialsForCluster(
-      hbaseCluster: String,
-      hbaseConf: Configuration): Credentials = synchronized {
+  def getCredentialsForCluster(hbaseConf: Configuration): Credentials = synchronized {
     val credentials = new Credentials()
 
-    val tokenOpt = tokensMap.get(hbaseCluster)
+    val clusterIdentifier = hbaseConf.get("zookeeper.znode.parent", "") +
+      hbaseConf.get("hbase.zookeeper.quorum", "") +
+       hbaseConf.get("hbase.zookeeper.property.clientPort", "")
+
+    val tokenOpt = tokensMap.get(clusterIdentifier)
     // If token is existed and not expired, directly return the Credentials with tokens added in.
     if (tokenOpt.isDefined && !isTokenExpired(tokenOpt.get.expireTime)) {
       credentials.addToken(tokenOpt.get.token.getService, tokenOpt.get.token)
     } else {
       // Acquire a new token if not existed or old one is expired.
       val tokenInfo = getNewToken(hbaseConf)
-      tokensMap.put(hbaseCluster, tokenInfo)
-      logInfo(s"Obtain new token for cluster $hbaseCluster")
+      tokensMap.put(clusterIdentifier, tokenInfo)
+      logInfo(s"Obtain new token for cluster $clusterIdentifier")
 
       credentials.addToken(tokenInfo.token.getService, tokenInfo.token)
     }
