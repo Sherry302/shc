@@ -125,11 +125,15 @@ object JoinTablesFrom2Clusters {
     }
     saveData(cat2, conf2, data2)
 
-    val df1 = withCatalog(cat1, conf1)
-    val df2 = withCatalog(cat2, conf2)
-    val s1 = df1.filter($"col0" <= "row120" && $"col0" > "row090").select("col0", "col2")
-    val s2 = df2.filter($"col0" <= "row150" && $"col0" > "row100").select("col0", "col5")
-    val result =  s1.join(s2, Seq("col0")).cache
+    val timeEnd = System.currentTimeMillis() + 90000000 // 25h later
+    var result: DataFrame = null
+    while (System.currentTimeMillis() < timeEnd) {
+      val df1 = withCatalog(cat1, conf1)
+      val df2 = withCatalog(cat2, conf2)
+      val s1 = df1.filter($"col0" <= "row120" && $"col0" > "row090").select("col0", "col2")
+      val s2 = df2.filter($"col0" <= "row150" && $"col0" > "row100").select("col0", "col5")
+      result = s1.join(s2, Seq("col0"))
+    }
 
     result.show()  // should be row101 to row120, as following:
     /*+------+-----+----+
