@@ -18,6 +18,7 @@
 package org.apache.spark.sql.execution.datasources.hbase
 
 import java.util.concurrent.{Executors, TimeUnit}
+import java.io.{File, BufferedWriter, FileWriter}
 
 import scala.collection.mutable
 import scala.language.existentials
@@ -73,6 +74,10 @@ final class HBaseCredentialsManager private() extends Logging {
       }
       logInfo(s"Obtain new token for cluster $identifier")
 
+      val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
+      pw.append(s"Obtain new token for cluster $identifier").write("\n")
+      pw.close
+
       credentials.addToken(tokenInfo.token.getService, tokenInfo.token)
     }
 
@@ -111,6 +116,11 @@ final class HBaseCredentialsManager private() extends Logging {
       // Update all the expect to be expired tokens
       val updatedTokens = tokensShouldUpdate.map { case (cluster, tokenInfo) =>
         logInfo(s"Update token for cluster $cluster")
+
+        val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
+        pw.append(s"Update token for cluster $cluster").write("\n")
+        pw.close
+
         val token = {
           try {
             getNewToken(tokenInfo.conf)
@@ -135,6 +145,11 @@ final class HBaseCredentialsManager private() extends Logging {
     val expireTime =
       expectedExpireTime(tokenIdentifier.getIssueDate, tokenIdentifier.getExpirationDate)
     logInfo(s"Obtain new token with expiration time $expireTime")
+
+    val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
+    pw.append(s"Obtain new token with expiration time $expireTime").write("\n")
+    pw.close
+
     new TokenInfo(expireTime, conf, token)
   }
 
