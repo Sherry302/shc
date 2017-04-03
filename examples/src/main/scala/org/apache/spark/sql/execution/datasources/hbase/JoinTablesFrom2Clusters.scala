@@ -113,29 +113,28 @@ object JoinTablesFrom2Clusters {
         .save()
     }
 
-    // data saved into cluster 1
-    val data1 = (0 to 120).map { i =>
-      JRecord(i)
-    }
-    saveData(cat1, conf1, data1)
-
-    // data saved into cluster 2
-    val data2 = (100 to 200).map { i =>
-      JRecord(i)
-    }
-    saveData(cat2, conf2, data2)
-
-    val df1 = withCatalog(cat1, conf1)
-    val df2 = withCatalog(cat2, conf2)
-    val s1 = df1.filter($"col0" <= "row120" && $"col0" > "row090").select("col0", "col2")
-    val s2 = df2.filter($"col0" <= "row150" && $"col0" > "row100").select("col0", "col5")
-    val result = s1.join(s2, Seq("col0"))
-
     val timeEnd = System.currentTimeMillis() + (25 * 60 * 60 * 1000) // 25h later
     while (System.currentTimeMillis() < timeEnd) {
+      // data saved into cluster 1
+      val data1 = (0 to 120).map { i =>
+        JRecord(i)
+      }
+      saveData(cat1, conf1, data1)
+
+      // data saved into cluster 2
+      val data2 = (100 to 200).map { i =>
+        JRecord(i)
+      }
+      saveData(cat2, conf2, data2)
+
+      val df1 = withCatalog(cat1, conf1)
+      val df2 = withCatalog(cat2, conf2)
+      val s1 = df1.filter($"col0" <= "row120" && $"col0" > "row090").select("col0", "col2")
+      val s2 = df2.filter($"col0" <= "row150" && $"col0" > "row100").select("col0", "col5")
+      val result = s1.join(s2, Seq("col0"))
       result.show()
-    }  // should be row101 to row120, as following:
-    /*+------+-----+----+
+      // should be row101 to row120, as following:
+      /*+------+-----+----+
       |  col0| col2|col5|
       +------+-----+----+
       |row120|120.0| 120|
@@ -160,8 +159,8 @@ object JoinTablesFrom2Clusters {
       |row119|119.0| 119|
       +------+-----+----+ */
 
-    println(result.count()) // should be 20
-
+      println(result.count()) // should be 20
+    }
     sc.stop()
   }
 }
