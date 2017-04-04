@@ -39,7 +39,7 @@ final class HBaseCredentialsManager private() extends Logging {
       val conf: Configuration,
       val token: Token[_ <: TokenIdentifier]) {
 
-    val isTokenExpired: Boolean = {
+    val isTokenInfoExpired: Boolean = {
       System.currentTimeMillis() >=  ((expireTime - issueTime) * 0.95 + issueTime).toLong
     }
 
@@ -80,7 +80,7 @@ final class HBaseCredentialsManager private() extends Logging {
     }
 
     // If token is existed and not expired, directly return the Credentials with tokens added in.
-    if (tokenOpt.isDefined && !tokenOpt.get.isTokenExpired) {
+    if (tokenOpt.isDefined && !tokenOpt.get.isTokenInfoExpired) {
       credentials.addToken(tokenOpt.get.token.getService, tokenOpt.get.token)
       val logText = s"Obtain existing token for on-demand cluster $identifier at $getDate"
       logInfo(logText)
