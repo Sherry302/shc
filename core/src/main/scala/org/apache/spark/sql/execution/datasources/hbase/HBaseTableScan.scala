@@ -260,7 +260,7 @@ private[hbase] class HBaseTableScanRDD(
     if (null != credentials) {
       val creds = HBaseRelation.deserialize(credentials)
       // for debug
-      relation.getDebugLogs("Task", creds)
+      relation.addLogs("Task", creds)
       UserGroupInformation.getCurrentUser.addCredentials(creds)
     }
     val ord = hbase.ord//implicitly[Ordering[HBaseType]]

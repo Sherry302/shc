@@ -124,7 +124,7 @@ case class HBaseRelation(
     if (HBaseCredentialsManager.manager.isCredentialsRequired(hbaseConf)) {
       val credentials = HBaseCredentialsManager.manager.getCredentialsForCluster(hbaseConf)
       // for debug
-      getDebugLogs("Driver", credentials)
+      addLogs("Driver", credentials)
 
       UserGroupInformation.getCurrentUser.addCredentials(credentials)
       HBaseRelation.serialize(credentials)
@@ -134,15 +134,13 @@ case class HBaseRelation(
   }
 
   // for debug
-  def getDebugLogs (component: String, credentials: Credentials): Unit = {
+  def addLogs(component: String, credentials: Credentials): Unit = {
     val minimumExpirationDates = HBaseCredentialsManager.manager
       .convertToDate(getMinimumExpirationDates(credentials).getOrElse(-1))
-    logInfo(s"$component: Obtain credentials with minimum expiration date of " +
-      s"tokens $minimumExpirationDates at ${HBaseCredentialsManager.manager.getDate}")
-    val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
-    pw.append(s"$component: Obtain credentials with minimum expiration date of " +
-      s"tokens $minimumExpirationDates at ${HBaseCredentialsManager.manager.getDate}").write("\n")
-    pw.close
+    val logText = s"$component: Obtain credentials with minimum expiration date of " +
+      s"tokens $minimumExpirationDates at ${HBaseCredentialsManager.manager.getDate}"
+    logInfo(logText)
+    HBaseCredentialsManager.manager.saveLogsToFile(logText)
   }
 
   private def getMinimumExpirationDates (credentials: Credentials): Option[Long] = {
@@ -266,7 +264,7 @@ case class HBaseRelation(
       if (null != serializedCredentials) {
         val creds = HBaseRelation.deserialize(serializedCredentials)
         // for debug
-        getDebugLogs("Task", creds)
+        addLogs("Task", creds)
         UserGroupInformation.getCurrentUser
           .addCredentials(creds)
       }
