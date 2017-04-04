@@ -19,8 +19,11 @@ package org.apache.spark.sql.execution.datasources.hbase
 
 import java.io._
 
+import org.apache.hadoop.hbase.security.token.AuthenticationTokenIdentifier
+
 import scala.util.control.NonFatal
 import scala.xml.XML
+import scala.collection.JavaConverters._
 
 import org.json4s.DefaultFormats
 import org.json4s.jackson.JsonMethods._
@@ -120,11 +123,36 @@ case class HBaseRelation(
   val serializedCredentials = {
     if (HBaseCredentialsManager.manager.isCredentialsRequired(hbaseConf)) {
       val credentials = HBaseCredentialsManager.manager.getCredentialsForCluster(hbaseConf)
+      // for debug
+      getDebugLogs("Driver", credentials)
+
       UserGroupInformation.getCurrentUser.addCredentials(credentials)
       HBaseRelation.serialize(credentials)
     } else {
       null
     }
+  }
+
+  // for debug
+  def getDebugLogs (component: String, credentials: Credentials): Unit = {
+    val minimumExpirationDates = HBaseCredentialsManager.manager
+      .convertToDate(getMinimumExpirationDates(credentials).getOrElse(-1))
+    logInfo(s"$component: Obtain credentials with minimum expiration date of " +
+      s"tokens $minimumExpirationDates at ${HBaseCredentialsManager.manager.getDate}")
+    val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
+    pw.append(s"$component: Obtain credentials with minimum expiration date of " +
+      s"tokens $minimumExpirationDates at ${HBaseCredentialsManager.manager.getDate}").write("\n")
+    pw.close
+  }
+
+  private def getMinimumExpirationDates (credentials: Credentials): Option[Long] = {
+    val expirationDates = credentials.getAllTokens.asScala
+      .filter(_.decodeIdentifier().isInstanceOf[AuthenticationTokenIdentifier])
+      .map { t =>
+        val identifier = t.decodeIdentifier().asInstanceOf[AuthenticationTokenIdentifier]
+        identifier.getExpirationDate
+      }
+    if (expirationDates.isEmpty) None else Some(expirationDates.min)
   }
 
   def createTable() {
@@ -236,8 +264,11 @@ case class HBaseRelation(
 
     rdd.mapPartitions(iter => {
       if (null != serializedCredentials) {
+        val creds = HBaseRelation.deserialize(serializedCredentials)
+        // for debug
+        getDebugLogs("Task", creds)
         UserGroupInformation.getCurrentUser
-          .addCredentials(HBaseRelation.deserialize(serializedCredentials))
+          .addCredentials(creds)
       }
       iter.map(convertToPut)
     }).saveAsNewAPIHadoopDataset(job.getConfiguration)

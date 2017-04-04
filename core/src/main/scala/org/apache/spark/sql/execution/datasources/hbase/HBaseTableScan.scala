@@ -258,7 +258,10 @@ private[hbase] class HBaseTableScanRDD(
 
   override def compute(split: Partition, context: TaskContext): Iterator[Row] = {
     if (null != credentials) {
-      UserGroupInformation.getCurrentUser.addCredentials(HBaseRelation.deserialize(credentials))
+      val creds = HBaseRelation.deserialize(credentials)
+      // for debug
+      relation.getDebugLogs("Task", creds)
+      UserGroupInformation.getCurrentUser.addCredentials(creds)
     }
     val ord = hbase.ord//implicitly[Ordering[HBaseType]]
     val partition = split.asInstanceOf[HBaseScanPartition]

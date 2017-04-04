@@ -35,6 +35,7 @@ import org.apache.spark.util.{ThreadUtils, Utils}
 final class HBaseCredentialsManager private() extends Logging {
   private class TokenInfo(
       val expireTime: Long,
+      val refreshTime: Long,
       val conf: Configuration,
       val token: Token[_ <: TokenIdentifier])
   private val tokensMap = new mutable.HashMap[String, TokenInfo]
@@ -67,6 +68,7 @@ final class HBaseCredentialsManager private() extends Logging {
     // If token is existed and not expired, directly return the Credentials with tokens added in.
     if (tokenOpt.isDefined && !isTokenExpired(tokenOpt.get.expireTime)) {
       credentials.addToken(tokenOpt.get.token.getService, tokenOpt.get.token)
+      logInfo(s"Obtain existing token for on-demand cluster $identifier at $getDate")
 
       val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
       pw.append(s"Obtain existing token for on-demand cluster $identifier at $getDate").write("\n")
@@ -77,11 +79,12 @@ final class HBaseCredentialsManager private() extends Logging {
       this.synchronized {
         tokensMap.put(identifier, tokenInfo)
       }
-      logInfo(s"Obtain new token for cluster $identifier")
+      logInfo(s"getCredentialsForCluster: Obtain new token with expiration time ${convertToDate(tokenInfo.expireTime)} " +
+        s"and refresh time ${convertToDate(tokenInfo.refreshTime)} for cluster $identifier at $getDate")
 
       val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
-      pw.append(s"Obtain new token with expiration time ${convertToDate(tokenInfo.expireTime)} " +
-        s"for cluster $identifier at $getDate").write("\n")
+      pw.append(s"getCredentialsForCluster: Obtain new token with expiration time ${convertToDate(tokenInfo.expireTime)} " +
+        s"and refresh time ${convertToDate(tokenInfo.refreshTime)} for cluster $identifier at $getDate").write("\n")
       pw.close
 
       credentials.addToken(tokenInfo.token.getService, tokenInfo.token)
@@ -99,7 +102,7 @@ final class HBaseCredentialsManager private() extends Logging {
     System.currentTimeMillis() >= expireTime
   }
 
-  private def expectedExpireTime(issueTime: Long, expireTime: Long): Long = {
+  private def getRefreshTime(issueTime: Long, expireTime: Long): Long = {
     require(expireTime > issueTime,
       s"Token expire time $expireTime is smaller than issue time $issueTime")
 
@@ -113,22 +116,22 @@ final class HBaseCredentialsManager private() extends Logging {
 
     // Filter out all the tokens should be re-issued.
     val tokensShouldUpdate = this.synchronized {
-      tokensMap.filter { case (_, tokenInfo) => tokenInfo.expireTime <= currTime }
+      tokensMap.filter { case (_, tokenInfo) => tokenInfo.refreshTime <= currTime }
     }
 
     if (tokensShouldUpdate.isEmpty) {
-      logDebug(s"No token requires update now $getDate")
+      logDebug(s"Refresh Thread: No token requires update now $getDate")
 
       val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
-      pw.append(s"No token requires update now $getDate").write("\n")
+      pw.append(s"Refresh Thread: No token requires update now $getDate").write("\n")
       pw.close
     } else {
       // Update all the expect to be expired tokens
       val updatedTokens = tokensShouldUpdate.map { case (cluster, tokenInfo) =>
-        logInfo(s"Update token for cluster $cluster at $getDate")
+        logInfo(s"Refresh Thread: Update token for cluster $cluster at $getDate")
 
         val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
-        pw.append(s"Update token for cluster $cluster at $getDate").write("\n")
+        pw.append(s"Refresh Thread: Update token for cluster $cluster at $getDate").write("\n")
         pw.close
 
         val token = {
@@ -136,10 +139,10 @@ final class HBaseCredentialsManager private() extends Logging {
             getNewToken(tokenInfo.conf)
           } catch {
             case NonFatal(ex) =>
-              logWarning("Error while trying to fetch tokens from HBase cluster", ex)
+              logWarning("Refresh Thread: Error while trying to fetch tokens from HBase cluster", ex)
 
               val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
-              pw.append(s"Error while trying to fetch tokens from HBase cluster $ex at $getDate").write("\n")
+              pw.append(s"Refresh Thread: Error while trying to fetch tokens from HBase cluster $ex at $getDate").write("\n")
               pw.close
 
               null
@@ -157,15 +160,17 @@ final class HBaseCredentialsManager private() extends Logging {
   private def getNewToken(conf: Configuration): TokenInfo = {
     val token = TokenUtil.obtainToken(conf)
     val tokenIdentifier = token.decodeIdentifier()
-    val expireTime =
-      expectedExpireTime(tokenIdentifier.getIssueDate, tokenIdentifier.getExpirationDate)
-    logInfo(s"Obtain new token with expiration time ${convertToDate(expireTime)} at $getDate")
+    val expireTime = tokenIdentifier.getExpirationDate
+    val refreshTime = getRefreshTime(tokenIdentifier.getIssueDate, tokenIdentifier.getExpirationDate)
+    logInfo(s"getNewToken: Obtain new token with expiration time ${convertToDate(expireTime)} and " +
+      s"refresh time ${convertToDate(refreshTime)} at $getDate")
 
     val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
-    pw.append(s"Obtain new token with expiration time ${convertToDate(expireTime)} at $getDate").write("\n")
+    pw.append(s"getNewToken: Obtain new token with expiration time ${convertToDate(expireTime)} and " +
+      s"refresh time ${convertToDate(refreshTime)} at $getDate").write("\n")
     pw.close
 
-    new TokenInfo(expireTime, conf, token)
+    new TokenInfo(expireTime, refreshTime, conf, token)
   }
 
   private def clusterIdentifier(conf: Configuration): String = {
@@ -178,17 +183,21 @@ final class HBaseCredentialsManager private() extends Logging {
       conf.get("hbase.zookeeper.property.clientPort")
   }
 
-  private def getDate: String = {
+  def getDate: String = {
     val timeInMillis = System.currentTimeMillis()
     val instant = Instant.ofEpochMilli(timeInMillis)
     val zonedDateTimeUtc = ZonedDateTime.ofInstant(instant, ZoneId.of("America/Los_Angeles"))
     timeInMillis + " (" + zonedDateTimeUtc.toString + ")"
   }
 
-  private def convertToDate(timeInMillis: Long): String = {
-    val instant = Instant.ofEpochMilli(timeInMillis)
-    val zonedDateTimeUtc = ZonedDateTime.ofInstant(instant, ZoneId.of("America/Los_Angeles"))
-    timeInMillis + " (" + zonedDateTimeUtc.toString + ")"
+  def convertToDate(timeInMillis: Long): String = {
+    if (timeInMillis == -1) {
+      s"input date is invalid"
+    } else {
+      val instant = Instant.ofEpochMilli(timeInMillis)
+      val zonedDateTimeUtc = ZonedDateTime.ofInstant(instant, ZoneId.of("America/Los_Angeles"))
+      timeInMillis + " (" + zonedDateTimeUtc.toString + ")"
+    }
   }
 }
 
