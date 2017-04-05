@@ -17,20 +17,27 @@
 
 package org.apache.spark.sql.execution.datasources.hbase
 
+import java.io.IOException
+import java.lang.reflect.UndeclaredThrowableException
+import java.security.{Principal, PrivilegedAction, PrivilegedExceptionAction}
+import java.util.Date
 import java.util.concurrent.{Executors, TimeUnit}
-import java.io.{File, BufferedWriter, FileWriter}
-import java.time.{Instant, ZoneId, ZonedDateTime}
+import javax.security.auth.Subject
+
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.hbase.client.{Connection, ConnectionFactory}
+import org.apache.hadoop.hbase.security.User
+import org.apache.hadoop.hbase.security.token.TokenUtil
+import org.apache.hadoop.mapred.JobConf
+import org.apache.hadoop.mapreduce.Job
+import org.apache.hadoop.security.token.{Token, TokenIdentifier}
+import org.apache.hadoop.security.{Credentials, UserGroupInformation}
+import org.apache.spark.sql.execution.datasources.hbase.HBaseCredentialsManager.TokenRemovingUser
+import org.apache.spark.util.{ThreadUtils, Utils}
 
 import scala.collection.mutable
 import scala.language.existentials
 import scala.util.control.NonFatal
-
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.security.token.TokenUtil
-import org.apache.hadoop.security.{Credentials, UserGroupInformation}
-import org.apache.hadoop.security.token.{Token, TokenIdentifier}
-
-import org.apache.spark.util.{ThreadUtils, Utils}
 
 final class HBaseCredentialsManager private() extends Logging {
   private class TokenInfo(
@@ -40,7 +47,8 @@ final class HBaseCredentialsManager private() extends Logging {
       val token: Token[_ <: TokenIdentifier]) {
 
     val isTokenInfoExpired: Boolean = {
-      System.currentTimeMillis() >=  ((expireTime - issueTime) * 0.95 + issueTime).toLong
+      System.currentTimeMillis() >=
+        ((expireTime - issueTime) * HBaseCredentialsManager.expireTimeFraction + issueTime).toLong
     }
 
     val refreshTime: Long = {
@@ -49,13 +57,13 @@ final class HBaseCredentialsManager private() extends Logging {
 
       // the expected expire time would be 60% of real expire time, to avoid long running task
       // failure.
-      ((expireTime - issueTime) * 0.6 + issueTime).toLong
+      ((expireTime - issueTime) * HBaseCredentialsManager.refreshTimeFraction + issueTime).toLong
     }
   }
   private val tokensMap = new mutable.HashMap[String, TokenInfo]
 
   // We assume token expiration time should be no less than 10 minutes.
-  private val nextRefresh = TimeUnit.MINUTES.toMillis(10)
+  private val nextRefresh = TimeUnit.MINUTES.toMillis(HBaseCredentialsManager.refreshDurationMins)
 
   private val tokenUpdater =
     Executors.newSingleThreadScheduledExecutor(
@@ -82,21 +90,21 @@ final class HBaseCredentialsManager private() extends Logging {
     // If token is existed and not expired, directly return the Credentials with tokens added in.
     if (tokenOpt.isDefined && !tokenOpt.get.isTokenInfoExpired) {
       credentials.addToken(tokenOpt.get.token.getService, tokenOpt.get.token)
-      val logText = s"Obtain existing token for on-demand cluster $identifier at $getDate"
-      logInfo(logText)
-      saveLogsToFile(logText)
+      // logDebug(s"Use existing token for on-demand cluster $identifier")
+      logInfo(s"Use existing token for on-demand cluster $identifier")
     } else {
+
+      logInfo(s"getCredentialsForCluster: Obtaining new token for cluster $identifier")
+
       // Acquire a new token if not existed or old one is expired.
-      val tokenInfo = getNewToken(conf)
+      val tokenInfo = getNewToken(conf, if (tokenOpt.isDefined) tokenOpt.get.token else null )
       this.synchronized {
         tokensMap.put(identifier, tokenInfo)
       }
 
-      val logText = s"getCredentialsForCluster: Obtain new token with expiration time" +
-        s" ${convertToDate(tokenInfo.expireTime)} and refresh time ${convertToDate(tokenInfo.refreshTime)} " +
-        s"for cluster $identifier at $getDate"
-      logInfo(logText)
-      saveLogsToFile(logText)
+      logInfo(s"getCredentialsForCluster: Obtained new token with expiration time" +
+        s" ${new Date(tokenInfo.expireTime)} and refresh time ${new Date(tokenInfo.refreshTime)} " +
+        s"for cluster $identifier")
 
       credentials.addToken(tokenInfo.token.getService, tokenInfo.token)
     }
@@ -118,25 +126,23 @@ final class HBaseCredentialsManager private() extends Logging {
     }
 
     if (tokensShouldUpdate.isEmpty) {
-      val logText = s"Refresh Thread: No token requires update now $getDate"
-      logDebug(logText)
-      saveLogsToFile(logText)
+      // logDebug("Refresh Thread: No tokens require update")
+      logInfo("Refresh Thread: No tokens require update")
     } else {
       // Update all the expect to be expired tokens
       val updatedTokens = tokensShouldUpdate.map { case (cluster, tokenInfo) =>
-        val logText = s"Refresh Thread: Update token for cluster $cluster at $getDate"
-        logDebug(logText)
-        saveLogsToFile(logText)
+        // logDebug(s"Refresh Thread: Update token for cluster $cluster")
+        logInfo(s"Refresh Thread: Update token for cluster $cluster")
 
         val token = {
           try {
-            getNewToken(tokenInfo.conf)
+            val tok = getNewToken(tokenInfo.conf, tokenInfo.token)
+            // logDebug(s"Refresh Thread: Successfully obtained token for cluster $cluster")
+            logInfo(s"Refresh Thread: Successfully obtained token for cluster $cluster")
+            tok
           } catch {
             case NonFatal(ex) =>
-              val logText = s"Refresh Thread: Error while trying to fetch tokens from HBase cluster at $getDate"
-              logWarning(logText, ex)
-              saveLogsToFile(logText)
-
+              logWarning(s"Refresh Thread: Unable to fetch tokens from HBase cluster $cluster", ex)
               null
           }
         }
@@ -149,8 +155,24 @@ final class HBaseCredentialsManager private() extends Logging {
     }
   }
 
-  private def getNewToken(conf: Configuration): TokenInfo = {
-    val token = TokenUtil.obtainToken(conf)
+  private def getNewToken(conf: Configuration, currentToken: Token[_ <: TokenIdentifier]): TokenInfo = {
+    val token = {
+      if (null != currentToken) {
+        val modifiedUser = new TokenRemovingUser(currentToken)
+        var connection: Connection = null
+        try {
+          val connection = ConnectionFactory.createConnection(conf, modifiedUser)
+          TokenUtil.obtainToken(connection, modifiedUser)
+        } finally {
+          if (null != connection) {
+            try { connection.close() } catch { case ex: Exception => /* ignore */ }
+          }
+        }
+      } else {
+        TokenUtil.obtainToken(conf)
+      }
+    }
+
     val tokenIdentifier = token.decodeIdentifier()
     val expireTime = tokenIdentifier.getExpirationDate
     val issueTime = tokenIdentifier.getIssueDate
@@ -166,33 +188,136 @@ final class HBaseCredentialsManager private() extends Logging {
       conf.get("hbase.zookeeper.quorum") + "-"
       conf.get("hbase.zookeeper.property.clientPort")
   }
+}
 
-  def getDate: String = {
-    val timeInMillis = System.currentTimeMillis()
-    val instant = Instant.ofEpochMilli(timeInMillis)
-    val zonedDateTimeUtc = ZonedDateTime.ofInstant(instant, ZoneId.of("America/Los_Angeles"))
-    timeInMillis + " (" + zonedDateTimeUtc.toString + ")"
+object HBaseCredentialsManager extends Logging {
+
+  // escape hatch for testing
+  private val expireTimeFraction = 0.95
+  private val refreshTimeFraction = 0.02
+  private val refreshDurationMins = 1
+
+  logInfo("expireTimeFraction = " + expireTimeFraction)
+  logInfo("refreshTimeFraction = " + refreshTimeFraction)
+  logInfo("refreshDurationMins = " + refreshDurationMins)
+
+
+  lazy val manager = new HBaseCredentialsManager
+
+  private lazy val getSubjectMethod = {
+    val method = classOf[UserGroupInformation].getDeclaredMethod("getSubject")
+    method.setAccessible(true)
+    method
   }
 
-  def convertToDate(timeInMillis: Long): String = {
-    if (timeInMillis == -1) {
-      s"input date is invalid"
-    } else {
-      val instant = Instant.ofEpochMilli(timeInMillis)
-      val zonedDateTimeUtc = ZonedDateTime.ofInstant(instant, ZoneId.of("America/Los_Angeles"))
-      timeInMillis + " (" + zonedDateTimeUtc.toString + ")"
+  private lazy val ugiConstructor = {
+    val constructor = classOf[UserGroupInformation].getDeclaredConstructor(classOf[Subject])
+    constructor.setAccessible(true)
+    constructor
+  }
+
+  private def fetchSubject(ugi: UserGroupInformation): Subject = {
+    getSubjectMethod.invoke(ugi).asInstanceOf[Subject]
+  }
+
+  private def createTokenRemovedUGI(tokenToRemove: Token[_ <: TokenIdentifier]): UserGroupInformation = {
+    val currentUgi = UserGroupInformation.getCurrentUser
+    currentUgi.synchronized {
+      val subject = fetchSubject(currentUgi)
+
+      val principals = new java.util.LinkedHashSet[Principal](subject.getPrincipals)
+      val publicCreds = new java.util.LinkedHashSet[java.lang.Object](subject.getPublicCredentials)
+      val privateCreds = new java.util.LinkedHashSet[java.lang.Object](subject.getPrivateCredentials)
+
+      val privateCredsIter = privateCreds.iterator()
+      var removed = false
+      val newCredentialsList = new mutable.ArrayBuffer[Credentials]()
+      val tokenToRemoveSet = new java.util.HashSet[Token[_ <: TokenIdentifier]]()
+      tokenToRemoveSet.add(tokenToRemove)
+
+      while (privateCredsIter.hasNext) {
+        val entry = privateCredsIter.next()
+        entry match {
+          case creds: Credentials =>
+            val newCreds = new Credentials()
+            newCreds.addAll(creds)
+
+
+            if (newCreds.getAllTokens.removeAll(tokenToRemoveSet)) {
+              logInfo("Removed token from credential. token = " + tokenToRemove)
+              removed = true
+            }
+            privateCredsIter.remove()
+            newCredentialsList += newCreds
+          case _ =>
+        }
+      }
+
+      // The part below does not required to be in synchronized block.
+      // But pulling it out is cumbersome, and the code is not expensive.
+
+      if (!removed) {
+        logInfo("Unable to find token from privateCreds. tokenToRemove = " + tokenToRemove)
+      }
+
+      val subjectCopy = new Subject(false, principals, publicCreds, privateCreds)
+
+      val ugi = ugiConstructor.newInstance(subjectCopy)
+      for (cred <- newCredentialsList) ugi.addCredentials(cred)
+
+      ugi
     }
   }
 
-  // for debug, this function will be removed after finishing testing
-  def saveLogsToFile(text: String) = {
-    // the file location is hardcoded for now
-    val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
-    pw.append(text).write("\n")
-    pw.close
-  }
-}
+  // Essentially a copy of SecureHadoopUser
+  private class TokenRemovingUser(tokenToRemove: Token[_ <: TokenIdentifier]) extends User {
 
-object HBaseCredentialsManager {
-  lazy val manager = new  HBaseCredentialsManager
+    private var shortName: String = _
+
+    this.ugi = createTokenRemovedUGI(tokenToRemove)
+
+    override def runAs[T](privilegedAction: PrivilegedAction[T]): T = {
+      ugi.doAs(privilegedAction)
+    }
+
+    override def runAs[T](privilegedExceptionAction: PrivilegedExceptionAction[T]): T = {
+      ugi.doAs(privilegedExceptionAction)
+    }
+
+    override def getShortName: String = {
+      if(null == shortName) {
+        try {
+          shortName = ugi.getShortUserName
+        } catch {
+          case ex: Exception =>
+            throw new RuntimeException("Unexpected error getting user short name", ex)
+        }
+      }
+      shortName
+    }
+
+    override def obtainAuthTokenForJob(conf: Configuration, job: Job): Unit = {
+      try {
+        TokenUtil.obtainTokenForJob(conf, ugi, job)
+      } catch {
+        case ex: IOException => throw ex
+        case ex: InterruptedException => throw ex
+        case ex: RuntimeException => throw ex
+        case ex: Exception => throw new UndeclaredThrowableException(
+            ex, "Unexpected error calling TokenUtil.obtainAndCacheToken()");
+      }
+    }
+
+    override def obtainAuthTokenForJob(jobConf: JobConf): Unit = {
+      try {
+        TokenUtil.obtainTokenForJob(jobConf, ugi)
+      } catch {
+        case ex: IOException => throw ex
+        case ex: InterruptedException => throw ex
+        case ex: RuntimeException => throw ex
+        case ex: Exception => throw new UndeclaredThrowableException(
+          ex, "Unexpected error calling TokenUtil.obtainAndCacheToken()");
+      }
+    }
+  }
 }
