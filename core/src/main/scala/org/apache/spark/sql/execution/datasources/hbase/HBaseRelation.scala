@@ -126,7 +126,7 @@ case class HBaseRelation(
       // for debug
       addLogs("Driver", credentials)
 
-      UserGroupInformation.getCurrentUser.addCredentials(credentials)
+    //  UserGroupInformation.getCurrentUser.addCredentials(credentials)
       HBaseRelation.serialize(credentials)
     } else {
       null
@@ -264,7 +264,7 @@ case class HBaseRelation(
       if (null != serializedCredentials) {
         val creds = HBaseRelation.deserialize(serializedCredentials)
         // for debug
-        addLogs("Task", creds)
+        addLogs("Task for saving data", creds)
         UserGroupInformation.getCurrentUser
           .addCredentials(creds)
       }

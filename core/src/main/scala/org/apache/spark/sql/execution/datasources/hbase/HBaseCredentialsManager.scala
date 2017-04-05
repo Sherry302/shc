@@ -49,13 +49,14 @@ final class HBaseCredentialsManager private() extends Logging {
 
       // the expected expire time would be 60% of real expire time, to avoid long running task
       // failure.
-      ((expireTime - issueTime) * 0.6 + issueTime).toLong
+      // ((expireTime - issueTime) * 0.6 + issueTime).toLong
+      ((expireTime - issueTime) * 0.02 + issueTime).toLong
     }
   }
   private val tokensMap = new mutable.HashMap[String, TokenInfo]
 
   // We assume token expiration time should be no less than 10 minutes.
-  private val nextRefresh = TimeUnit.MINUTES.toMillis(10)
+  private val nextRefresh = TimeUnit.MINUTES.toMillis(3)
 
   private val tokenUpdater =
     Executors.newSingleThreadScheduledExecutor(
@@ -124,13 +125,14 @@ final class HBaseCredentialsManager private() extends Logging {
     } else {
       // Update all the expect to be expired tokens
       val updatedTokens = tokensShouldUpdate.map { case (cluster, tokenInfo) =>
-        val logText = s"Refresh Thread: Update token for cluster $cluster at $getDate"
-        logDebug(logText)
-        saveLogsToFile(logText)
-
         val token = {
           try {
-            getNewToken(tokenInfo.conf)
+            val tok = getNewToken(tokenInfo.conf)
+            val logText = s"Refresh Thread: Successfully obtained token for cluster $cluster at $getDate"
+            logDebug(logText)
+            saveLogsToFile(logText)
+            tok
+
           } catch {
             case NonFatal(ex) =>
               val logText = s"Refresh Thread: Error while trying to fetch tokens from HBase cluster at $getDate"
