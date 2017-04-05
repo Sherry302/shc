@@ -184,7 +184,7 @@ final class HBaseCredentialsManager private() extends Logging {
     }
   }
 
-  // for debug
+  // for debug, this function will be removed after finishing testing
   def saveLogsToFile(text: String) = {
     // the file location is hardcoded for now
     val pw = new BufferedWriter(new FileWriter(new File("/home/ambari-qa/results.txt"), true))
