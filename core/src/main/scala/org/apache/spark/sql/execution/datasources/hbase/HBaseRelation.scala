@@ -135,12 +135,8 @@ case class HBaseRelation(
 
   // for debug
   def addLogs(component: String, credentials: Credentials): Unit = {
-    val minimumExpirationDates = HBaseCredentialsManager.manager
-      .convertToDate(getMinimumExpirationDates(credentials).getOrElse(-1))
-    val logText = s"$component: Obtain credentials with minimum expiration date of " +
-      s"tokens $minimumExpirationDates at ${HBaseCredentialsManager.manager.getDate}"
-    logInfo(logText)
-    HBaseCredentialsManager.manager.saveLogsToFile(logText)
+    logInfo(s"$component: Obtain credentials with minimum expiration date of " +
+      s"tokens ${getMinimumExpirationDates(credentials).getOrElse(-1)}")
   }
 
   private def getMinimumExpirationDates (credentials: Credentials): Option[Long] = {
