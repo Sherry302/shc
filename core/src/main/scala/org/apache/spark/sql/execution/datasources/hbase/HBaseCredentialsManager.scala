@@ -96,7 +96,7 @@ final class HBaseCredentialsManager private() extends Logging {
       logInfo(s"getCredentialsForCluster: Obtaining new token for cluster $identifier")
 
       // Acquire a new token if not existed or old one is expired.
-      val tokenInfo = getNewToken(conf, if (tokenOpt.isDefined) tokenOpt.get.token else null )
+      val tokenInfo = getNewToken(conf, tokenOpt.map(_.token) )
       this.synchronized {
         tokensMap.put(identifier, tokenInfo)
       }
@@ -133,7 +133,7 @@ final class HBaseCredentialsManager private() extends Logging {
 
         val token = {
           try {
-            val tok = getNewToken(tokenInfo.conf, tokenInfo.token)
+            val tok = getNewToken(tokenInfo.conf, Option(tokenInfo.token) )
             logInfo(s"Refresh Thread: Successfully obtained token for cluster $cluster")
             tok
           } catch {
@@ -151,13 +151,37 @@ final class HBaseCredentialsManager private() extends Logging {
     }
   }
 
-  private def getNewToken(conf: Configuration, currentToken: Token[_ <: TokenIdentifier]): TokenInfo = {
+  /*
+   * This method and the infrastructure in HBaseCredentialManager object are trying to workaround an
+   * issue with hbase token acquisition.
+   * HBase allows token acquisition only if it detects that the incoming user (at server) is
+   * kerberos authorized. Since we need to access hbase at driver, we end up adding the acquired
+   * tokens to current user credentials - which allows us hbase acces. Unfortunately, when we do
+   * token renewal with the same user, hbase will now reject our request - since it sees that the
+   * incoming user is authorized by token.
+   * Since getNewToken can be invoked in multiple threads, while hbase access might be happening in
+   * parallel, we cannot "remove tokens from ugi.currentUser for the cluster just for token
+   * acquisition and add new tokens once acquired".
+   *
+   * In order to workaround this issue, we directly access the underlying Subject in UGI, create a
+   * copy of it, modify the copy's private credentials to remove existing tokens for hbase for
+   * the cluster in question (if we had previously added tokens for it - this also means
+   * that the cluster id MUST uniquely identify the cluster), create a new ugi our of this and
+   * use this new ugi to create a hbase User - for use with connection and token acquisition.
+   * This new user will have everything in common with ugi.currentUser - except for the token we
+   * removed for the cluster.
+   *
+   * This will cause the token acquisition to behave as it did for the first time we acquired token for
+   * cluster - and resulting in working around the hbase token acquisition constraint.
+   */
+  private def getNewToken(conf: Configuration,
+      currentTokenOpt: Option[Token[_ <: TokenIdentifier]]): TokenInfo = {
     val token = {
-      if (null != currentToken) {
-        val modifiedUser = new TokenRemovingUser(currentToken)
+      if (currentTokenOpt.isDefined) {
+        val modifiedUser = new TokenRemovingUser(currentTokenOpt.get)
         var connection: Connection = null
         try {
-          val connection = ConnectionFactory.createConnection(conf, modifiedUser)
+          connection = ConnectionFactory.createConnection(conf, modifiedUser)
           TokenUtil.obtainToken(connection, modifiedUser)
         } finally {
           if (null != connection) {
@@ -192,8 +216,11 @@ object HBaseCredentialsManager extends Logging {
   private val refreshTimeFraction = 0.6
   private val refreshDurationMins = 10
 
-
   lazy val manager = new HBaseCredentialsManager
+
+  // See HBaseCredentialsManager#getNewToken for explaination about why we need everything
+  // below this comment
+
 
   private lazy val getSubjectMethod = {
     val method = classOf[UserGroupInformation].getDeclaredMethod("getSubject")
