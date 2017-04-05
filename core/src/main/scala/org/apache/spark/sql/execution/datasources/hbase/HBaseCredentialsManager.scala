@@ -90,7 +90,6 @@ final class HBaseCredentialsManager private() extends Logging {
     // If token is existed and not expired, directly return the Credentials with tokens added in.
     if (tokenOpt.isDefined && !tokenOpt.get.isTokenInfoExpired) {
       credentials.addToken(tokenOpt.get.token.getService, tokenOpt.get.token)
-      // logDebug(s"Use existing token for on-demand cluster $identifier")
       logInfo(s"Use existing token for on-demand cluster $identifier")
     } else {
 
@@ -126,18 +125,15 @@ final class HBaseCredentialsManager private() extends Logging {
     }
 
     if (tokensShouldUpdate.isEmpty) {
-      // logDebug("Refresh Thread: No tokens require update")
       logInfo("Refresh Thread: No tokens require update")
     } else {
       // Update all the expect to be expired tokens
       val updatedTokens = tokensShouldUpdate.map { case (cluster, tokenInfo) =>
-        // logDebug(s"Refresh Thread: Update token for cluster $cluster")
         logInfo(s"Refresh Thread: Update token for cluster $cluster")
 
         val token = {
           try {
             val tok = getNewToken(tokenInfo.conf, tokenInfo.token)
-            // logDebug(s"Refresh Thread: Successfully obtained token for cluster $cluster")
             logInfo(s"Refresh Thread: Successfully obtained token for cluster $cluster")
             tok
           } catch {
@@ -192,14 +188,9 @@ final class HBaseCredentialsManager private() extends Logging {
 
 object HBaseCredentialsManager extends Logging {
 
-  // escape hatch for testing
   private val expireTimeFraction = 0.95
-  private val refreshTimeFraction = 0.02
-  private val refreshDurationMins = 1
-
-  logInfo("expireTimeFraction = " + expireTimeFraction)
-  logInfo("refreshTimeFraction = " + refreshTimeFraction)
-  logInfo("refreshDurationMins = " + refreshDurationMins)
+  private val refreshTimeFraction = 0.6
+  private val refreshDurationMins = 10
 
 
   lazy val manager = new HBaseCredentialsManager
