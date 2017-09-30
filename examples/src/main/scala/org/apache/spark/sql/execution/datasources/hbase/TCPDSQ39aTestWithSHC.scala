@@ -5,10 +5,10 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.execution.datasources.hbase.HBaseTableCatalog
 
 
-object SHC {
-  // catalog for the HBase table named 'shc_item'
+object TCPDSQ39aTestWithSHC {
+  // catalog for the HBase table named 'shcHbase_item'
   val item_cat = s"""{
-                |"table":{"namespace":"default", "name":"shc_hbase_item1", "tableCoder":"PrimitiveType"},
+                |"table":{"namespace":"default", "name":"shcHbase_item", "tableCoder":"PrimitiveType"},
                 |"rowkey":"key",
                 |"columns":{
                 |"i_item_sk":{"cf":"rowkey", "col":"key", "type":"int"},
@@ -36,9 +36,9 @@ object SHC {
                 |}
                 |}""".stripMargin
 
-  // catalog for the HBase table named 'shc_date_dim'
+  // catalog for the HBase table named 'shcHbase_date_dim'
   val date_dim_cat = s"""{
-                 |"table":{"namespace":"default", "name":"shc_hbase_date_dim", "tableCoder":"PrimitiveType"},
+                 |"table":{"namespace":"default", "name":"shcHbase_date_dim", "tableCoder":"PrimitiveType"},
                  |"rowkey":"key",
                  |"columns":{
                  |"d_date_sk":{"cf":"rowkey", "col":"key", "type":"int"},
@@ -72,9 +72,9 @@ object SHC {
                  |}
                  |}""".stripMargin
 
-  // catalog for the HBase table named 'shc_warehouse'
+  // catalog for the HBase table named 'shcHbase_warehouse'
   val warehouse_cat = s"""{
-                |"table":{"namespace":"default", "name":"shc_hbase_warehouse", "tableCoder":"PrimitiveType"},
+                |"table":{"namespace":"default", "name":"shcHbase_warehouse", "tableCoder":"PrimitiveType"},
                 |"rowkey":"key",
                 |"columns":{
                 |"w_warehouse_sk":{"cf":"rowkey", "col":"key", "type":"int"},
@@ -94,9 +94,9 @@ object SHC {
                 |}
                 |}""".stripMargin
 
-  // catalog for the HBase table named 'shc_inventory'
+  // catalog for the HBase table named 'shcHbase_inventory'
   val inventory_cat = s"""{
-                 |"table":{"namespace":"default", "name":"shc_hbase_inventory", "tableCoder":"PrimitiveType"},
+                 |"table":{"namespace":"default", "name":"shcHbase_inventory", "tableCoder":"PrimitiveType"},
                  |"rowkey":"key",
                  |"columns":{
                  |"inv_date_sk":{"cf":"rowkey", "col":"key", "type":"int"},
@@ -108,7 +108,7 @@ object SHC {
 
   def main(args: Array[String]) {
     val spark = SparkSession.builder()
-      .appName("TCPDSTestingWithSHC")
+      .appName("TCPDS_Q39a_TestingWithSHC")
       .enableHiveSupport()
       .getOrCreate()
 
@@ -133,7 +133,7 @@ object SHC {
     }
 
     // load data from Hive tables into Hbase tables
-    val itemHive = sql("SELECT * FROM item")
+    /*val itemHive = sql("SELECT * FROM item")
       .withColumn("i_current_price", $"i_current_price".cast(DoubleType))
       .withColumn("i_wholesale_cost", $"i_wholesale_cost".cast(DoubleType))
     saveToHBase(itemHive, item_cat)
@@ -146,7 +146,7 @@ object SHC {
     saveToHBase(warehouseHive, warehouse_cat)
 
     val inventoryHive = sql("SELECT * FROM inventory")
-    saveToHBase(inventoryHive, inventory_cat)
+    saveToHBase(inventoryHive, inventory_cat)*/
 
     // read data from hbase tables(hbase_item, hbase_date_dim, hbase_warehouse, hb_inventory) into dataframes
     val item_df = withCatalog(item_cat)
@@ -159,14 +159,14 @@ object SHC {
     warehouse_df.createOrReplaceTempView("hbase_warehouse")
 
     val inventory_df = withCatalog(inventory_cat)
-    inventory_df.createOrReplaceTempView("hb_inventory")
+    inventory_df.createOrReplaceTempView("hbase_inventory")
 
+    //TCPDS Q39a
     val timeStart = System.currentTimeMillis()
-
     val ret = sqlContext.sql("WITH inv AS (SELECT w_warehouse_name, w_warehouse_sk, i_item_sk, d_moy, stdev, mean, " +
       "CASE mean WHEN 0 THEN NULL ELSE stdev / mean END cov FROM " +
       "(SELECT w_warehouse_name, w_warehouse_sk, i_item_sk, d_moy, stddev_samp(inv_quantity_on_hand) stdev, " +
-      "avg(inv_quantity_on_hand) mean FROM hb_inventory, hbase_item, hbase_warehouse, hbase_date_dim " +
+      "avg(inv_quantity_on_hand) mean FROM hbase_inventory, hbase_item, hbase_warehouse, hbase_date_dim " +
       "WHERE inv_item_sk = i_item_sk AND inv_warehouse_sk = w_warehouse_sk AND inv_date_sk = d_date_sk AND d_year = 2001 " +
       "GROUP BY w_warehouse_name, w_warehouse_sk, i_item_sk, d_moy) foo WHERE CASE mean WHEN 0 THEN 0 ELSE stdev / mean END > 1) " +
       "SELECT inv1.w_warehouse_sk, inv1.i_item_sk, inv1.d_moy, inv1.mean, inv1.cov, inv2.w_warehouse_sk, inv2.i_item_sk, " +
@@ -175,8 +175,7 @@ object SHC {
       "ORDER BY inv1.w_warehouse_sk, inv1.i_item_sk, inv1.d_moy, inv1.mean, inv1.cov , inv2.d_moy, inv2.mean, inv2.cov")
     ret.show()
     ret.count()
-
     val timeEnd = System.currentTimeMillis()
-    println(s"Execution Time: ${timeEnd - timeStart}")
+    println(s"Execution Time of TCPDS Q39a: ${timeEnd - timeStart}")
   }
 }
