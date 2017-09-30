@@ -133,7 +133,7 @@ object TCPDSQ39aTestWithSHC {
     }
 
     // load data from Hive tables into Hbase tables
-    /*val itemHive = sql("SELECT * FROM item")
+    val itemHive = sql("SELECT * FROM item")
       .withColumn("i_current_price", $"i_current_price".cast(DoubleType))
       .withColumn("i_wholesale_cost", $"i_wholesale_cost".cast(DoubleType))
     saveToHBase(itemHive, item_cat)
@@ -146,7 +146,7 @@ object TCPDSQ39aTestWithSHC {
     saveToHBase(warehouseHive, warehouse_cat)
 
     val inventoryHive = sql("SELECT * FROM inventory")
-    saveToHBase(inventoryHive, inventory_cat)*/
+    saveToHBase(inventoryHive, inventory_cat)
 
     // read data from hbase tables(hbase_item, hbase_date_dim, hbase_warehouse, hb_inventory) into dataframes
     val item_df = withCatalog(item_cat)

@@ -11,7 +11,7 @@ object TCPDSQ39bTestWithSparkSQL {
 
     import spark.sql
 
-    //HBase tables sparksql_inventory, sparksql_item, sparksql_warehouse, sparksql_date_dim are used in the following queries
+    //HBase tables sparksql_inventory, sparksql_item, sparksql_warehouse, sparksql_date_dim are used in the query below
     //TCPDS Q39b
     val timeStart = System.currentTimeMillis()
     val ret = sql("WITH inv AS (SELECT w_warehouse_name, w_warehouse_sk, i_item_sk, d_moy, stdev, mean, " +
