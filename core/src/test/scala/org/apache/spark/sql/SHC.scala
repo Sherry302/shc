@@ -72,9 +72,21 @@ class SHC  extends FunSuite with BeforeAndAfterEach with BeforeAndAfterAll  with
   @deprecated(since = "04.12.2017(dd/mm/year)", message = "use `defineCatalog` instead")
   def catalog = defineCatalog(tableName)
 
+  def urlses(cl: ClassLoader): Array[java.net.URL] = cl match {
+    case null => Array()
+    case u: java.net.URLClassLoader => u.getURLs() ++ urlses(cl.getParent)
+    case _ => urlses(cl.getParent)
+  }
+
+
+
   override def beforeAll() {
+    val  urls = urlses(getClass.getClassLoader)
+    println(urls.filterNot(_.toString.contains("ivy")).mkString("\n"))
+
     val tempDir: File = Files.createTempDir
     tempDir.deleteOnExit
+
     htu.startMiniCluster
     SparkHBaseConf.conf = htu.getConfiguration
     logInfo(" - minicluster started")

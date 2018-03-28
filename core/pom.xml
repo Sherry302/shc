@@ -56,6 +56,10 @@
       <exclusions>
         <exclusion>
           <groupId>org.apache.htrace</groupId>
+          <artifactId>htrace-core</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.htrace</groupId>
           <artifactId>htrace-core4</artifactId>
         </exclusion>
         <exclusion>
@@ -85,6 +89,10 @@
       <artifactId>hbase-common</artifactId>
       <version>${hbase.version}</version>
       <exclusions>
+        <exclusion>
+          <groupId>org.apache.htrace</groupId>
+          <artifactId>htrace-core</artifactId>
+        </exclusion>
         <exclusion>
           <groupId>org.apache.htrace</groupId>
           <artifactId>htrace-core4</artifactId>
@@ -118,6 +126,10 @@
       <exclusions>
         <exclusion>
           <groupId>org.apache.htrace</groupId>
+          <artifactId>htrace-core</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.htrace</groupId>
           <artifactId>htrace-core4</artifactId>
         </exclusion>
       </exclusions>
@@ -142,6 +154,12 @@
       <artifactId>hbase-testing-util</artifactId>
       <type>test-jar</type>
       <version>${hbase.version}</version>
+      <!--exclusions>
+        <exclusion>
+          <groupId>org.apache.htrace</groupId>
+          <artifactId>htrace-core</artifactId>
+        </exclusion>
+      </exclusions-->
       <scope>test</scope>
     </dependency>
     <dependency>
