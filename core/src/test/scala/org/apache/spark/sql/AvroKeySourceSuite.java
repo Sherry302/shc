@@ -24,11 +24,13 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.io.EncoderFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseCluster;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.HTable;
-import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.executor.ExecutorService;
+import org.apache.hadoop.hbase.ipc.RpcControllerFactory;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.spark.sql.execution.datasources.hbase.HBaseTableCatalog;
 import org.apache.spark.sql.execution.datasources.hbase.SparkHBaseConf;
@@ -45,6 +47,40 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 
+/*
+class HTableMocker extends HTable {
+  protected ClusterConnection connection;
+  private final TableName tableName;
+  private boolean autoFlush;
+  private final boolean cleanupPoolOnClose;
+  private final boolean cleanupConnectionOnClose;
+  private Consistency defaultConsistency;
+  private volatile Configuration configuration;
+
+  public HTableMocker(Configuration conf, TableName tableName) throws IOException {
+    super(tableName, (ClusterConnection) null,
+            null,
+            (RpcRetryingCallerFactory)null,
+            (RpcControllerFactory)null,
+            null);
+    //super(tableName, (ClusterConnection) null,
+    // ConnectionConfiguration tableConfig,
+    // RpcRetryingCallerFactory rpcCallerFactory,
+    // RpcControllerFactory rpcControllerFactory,
+    // java.util.concurrent.ExecutorService pool)
+
+    this.defaultConsistency = Consistency.STRONG;
+    this.tableName = tableName;
+    this.cleanupPoolOnClose = this.cleanupConnectionOnClose = true;
+    if(conf == null) {
+      this.connection = null;
+    } else {
+      this.connection = null;
+      this.configuration = conf;
+    }
+  }
+}
+*/
 public class AvroKeySourceSuite {
 
   private static final TableName TABLE_NAME = TableName.valueOf("TEST_TABLE");
@@ -125,7 +161,9 @@ public class AvroKeySourceSuite {
     // Write some data directly to it
     GenericRecord record1 = getRecord(KEY1, 5);
     GenericRecord record2 = getRecord(KEY2, 7);
-    HTable testTable = new HTable(hbase.getConf(), TABLE_NAME);
+    // HTable testTable = new HTable(ConnectionFactory.createConnection(hbase.getConf()), new BufferedMutatorParams(TABLE_NAME));
+    @Deprecated
+    HTable testTable = null; //new HTableMocker(hbase.getConf(), TABLE_NAME);
     putRecord(testTable, record1);
     putRecord(testTable, record2);
   }
